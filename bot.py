@@ -12,7 +12,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import db
-from config import ADMIN_IDS, BOT_TOKEN, CHANNEL_ID, TEAM_NAME
+from config import ADMIN_IDS, ALLOW_ALL_MEMBERS, BOT_TOKEN, CHANNEL_ID, TEAM_NAME
 
 router = Router()
 BOT_USERNAME = ""
@@ -122,13 +122,19 @@ def admin_tag(user) -> str:
 async def is_admin(bot: Bot, user_id: int) -> bool:
     if user_id in ADMIN_IDS:
         return True
-    if ADMIN_IDS:
+    if ADMIN_IDS and not ALLOW_ALL_MEMBERS:
         return False
     try:
         member = await bot.get_chat_member(CHANNEL_ID, user_id)
-        return member.status in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR)
     except Exception:
         return False
+    allowed = [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]
+    if ALLOW_ALL_MEMBERS:
+        allowed.append(ChatMemberStatus.MEMBER)
+        # ограниченный (restricted) участник, который всё ещё в группе
+        if member.status == ChatMemberStatus.RESTRICTED and getattr(member, "is_member", False):
+            return True
+    return member.status in allowed
 
 
 # ───────────────────────── старт / меню ─────────────────────────
