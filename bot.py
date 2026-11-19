@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 from html import escape
@@ -37,7 +39,6 @@ class AdminWrite(StatesGroup):
 def main_menu_kb() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="📝 Подать заявку", callback_data="apply")
-    kb.button(text="ℹ️ О нас", callback_data="about")
     kb.button(text="🤝 Моя реферальная ссылка", callback_data="ref")
     kb.adjust(1)
     return kb.as_markup()
@@ -88,6 +89,19 @@ def welcome_text(name: str) -> str:
     )
 
 
+def referrer_text(ref_code: str | None) -> str:
+    """«RF-XXXX (от @kent)» — кто пригласил кандидата, либо «Нет»."""
+    if not ref_code:
+        return "Нет"
+    owner = db.get_user_by_ref(ref_code)
+    if not owner:
+        return escape(ref_code)
+    who = f"@{owner['username']}" if owner["username"] else escape(owner["full_name"] or "")
+    return (
+        f"{escape(ref_code)} (от <a href=\"tg://user?id={owner['user_id']}\">{who}</a>)"
+    )
+
+
 def application_text(app, user_id: int) -> str:
     return (
         f"🔻 <b>{TEAM_NAME} / ЗАЯВКА #{app['id']}</b>\n\n"
@@ -97,7 +111,7 @@ def application_text(app, user_id: int) -> str:
         f"💼 Опыт в сфере: {escape(app['experience'])}\n"
         f"🎧 Discord, CS2, микрофон: {escape(app['equipment'])}\n"
         f"⏱ Время на работу: {escape(app['hours'])}\n"
-        f"🤝 Реферальный код: {escape(app['ref_code'])}\n"
+        f"🤝 Реферальный код: {referrer_text(app['ref_code'])}\n"
         f"📯 Откуда про нас узнали: {escape(app['source'])}"
     )
 
@@ -175,17 +189,6 @@ async def cancel_cmd(message: Message, state: FSMContext):
 async def cancel_cb(call: CallbackQuery, state: FSMContext):
     await state.clear()
     await call.message.edit_text("Отменено. Возвращайся, когда будешь готов 🙂", reply_markup=main_menu_kb())
-
-
-@router.callback_query(F.data == "about")
-async def about(call: CallbackQuery):
-    await call.answer()
-    await call.message.answer(
-        f"🔻 <b>{TEAM_NAME}</b>\n\n"
-        "Тут описание команды: чем занимаетесь, кого ищете, условия.\n"
-        "(поменяй текст в bot.py → функция about)",
-        reply_markup=main_menu_kb(),
-    )
 
 
 @router.callback_query(F.data == "ref")
@@ -277,7 +280,8 @@ async def send_application(call: CallbackQuery, state: FSMContext, bot: Bot):
     await state.clear()
     user = db.get_or_create_user(call.from_user.id, call.from_user.username, call.from_user.full_name)
 
-    app_id = db.create_application(call.from_user.id, data, user["ref_code"])
+    # в заявку пишем код того, по чьей ссылке пришёл кандидат
+    app_id = db.create_application(call.from_user.id, data, user["invited_by"])
     app = db.get_application(app_id)
     try:
         sent = await bot.send_message(CHANNEL_ID, application_text(app, call.from_user.id), reply_markup=review_kb(app_id))

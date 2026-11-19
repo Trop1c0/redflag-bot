@@ -48,19 +48,28 @@ def _new_ref_code() -> str:
 
 def get_or_create_user(user_id: int, username: str | None, full_name: str, invited_by: str | None = None):
     row = conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
+    # код должен существовать и принадлежать другому человеку
+    if invited_by:
+        owner = get_user_by_ref(invited_by)
+        if not owner or owner["user_id"] == user_id:
+            invited_by = None
     if row:
         conn.execute("UPDATE users SET username=?, full_name=? WHERE user_id=?", (username, full_name, user_id))
+        # рефку можно привязать, если её ещё нет и человек ещё не подавал заявку
+        if invited_by and not row["invited_by"] and not last_application(user_id):
+            conn.execute("UPDATE users SET invited_by=? WHERE user_id=?", (invited_by, user_id))
         conn.commit()
         return conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
-    # нельзя пригласить самого себя / несуществующий код
-    if invited_by and not conn.execute("SELECT 1 FROM users WHERE ref_code=?", (invited_by,)).fetchone():
-        invited_by = None
     conn.execute(
         "INSERT INTO users (user_id, username, full_name, ref_code, invited_by, created_at) VALUES (?,?,?,?,?,?)",
         (user_id, username, full_name, _new_ref_code(), invited_by, int(time.time())),
     )
     conn.commit()
     return conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
+
+
+def get_user_by_ref(ref_code: str):
+    return conn.execute("SELECT * FROM users WHERE ref_code=?", (ref_code,)).fetchone()
 
 
 def get_user(user_id: int):
