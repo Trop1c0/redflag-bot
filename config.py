@@ -1,8 +1,13 @@
 import os
+import sys
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# Файл настроек: python bot.py .env.bot2  (по умолчанию .env)
+ENV_FILE = sys.argv[1] if len(sys.argv) > 1 else os.getenv("ENV_FILE", ".env")
+if not os.path.isfile(ENV_FILE):
+    raise SystemExit(f"Файл настроек {ENV_FILE} не найден")
+load_dotenv(ENV_FILE)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 # ID канала/группы, куда падают заявки (например -1001234567890). Бот должен быть там админом.
